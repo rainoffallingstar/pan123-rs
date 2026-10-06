@@ -968,7 +968,7 @@ impl Pan123Client {
 
                             // 为大分片使用更长的超时时间
                             // 假设最低速度 1MB/s，给予 2 倍缓冲时间
-                            let chunk_mb = chunk_len / (1024 * 1024).max(1);
+                            let chunk_mb = chunk_len / (1024 * 1024);
                             let timeout_secs = (chunk_mb * 2).max(300); // 至少 5 分钟，最多根据分片大小调整
 
                             client
