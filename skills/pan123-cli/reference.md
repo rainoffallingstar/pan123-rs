@@ -109,6 +109,22 @@ Token 首选存储为系统密钥链（`keyring` crate：macOS Keychain / Window
 
 > 兼容旧布局：读取时还会尝试 `./crates/pan123-cli/123pan_token.json` 与 `./crates/pan123-sdk/123pan_token.json`。
 
+### 域名环境变量覆盖
+
+| 变量 | 作用 | 默认（服务端下发前的内置值） |
+| --- | --- | --- |
+| `PAN123_BASE_URL` | API 基址 | `https://api.123278.com` |
+| `PAN123_UCENTER_URL` | 登录/ucenter 基址 | `https://login.123pan.com` |
+
+优先级：**环境变量 > 服务端下发的 `dydomain` > 内置默认值**。可填裸域名（自动补 `https://`），尾部斜杠会被去除。主要用于 DNS/代理异常时显式指定可用域名，例如：
+
+```bash
+export PAN123_UCENTER_URL=user.123pan.cn
+export PAN123_BASE_URL=www.123pan.cn
+```
+
+域名发现会依次尝试 `login.123pan.com`、`user.123pan.cn`，单次请求 8s 超时；全部失败时保留默认值（此时可用上述环境变量覆盖）。
+
 ## 传输行为
 
 ### 上传
@@ -138,7 +154,8 @@ Token 首选存储为系统密钥链（`keyring` crate：macOS Keychain / Window
 | `api error <code>: <message>` | 服务端返回错误 |
 | `resource not found: <ref>` | REF 不存在 |
 | `invalid path: <ref>` | 路径/REF 非法 |
-| `网络异常，暂时无法验证登录状态：…` | 校验登录时网络不可达 |
+| `网络异常，暂时无法验证登录状态：无法连接 <url>…` | 校验登录时网络不可达；提示检查 DNS/代理 |
+| `无法连接 <url>：<reqwest 错误>…` | 登录域名连接失败，多为 DNS/代理劫持；见 SKILL.md「代理/DNS 环境」 |
 | `operation failed: …` | 其它操作失败（含“<名称> 不是目录”） |
 | `file conflict: <path>` | 文件冲突 |
 | `insufficient storage space` | 空间不足 |

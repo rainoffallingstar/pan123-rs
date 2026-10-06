@@ -59,6 +59,7 @@ $PAN123 login     # 打印二维码，需用 123盘 App / 微信扫码；交互�
 - 配置/状态目录优先级：`$PAN123_CONFIG_DIR` → `$APPDATA/pan123-cli` → `$USERPROFILE/.pan123-cli` → `./.pan123-cli`。
 - 该目录存有 `123pan_cwd.json`（当前目录）与 `resume/`（下载续传元数据）。
 - 无头环境替代方案（需谨慎，Token 为敏感凭据）：在可交互机器完成一次 `login`，或将 Token 写入 `$PAN123_CONFIG_DIR/123pan_token.json`，或直接使用 SDK `Pan123Client::new(Some(token))`。
+- 域名可用环境变量覆盖（本地版本包含该支持时）：`PAN123_BASE_URL`（API 基址）、`PAN123_UCENTER_URL`（登录/ucenter 基址）。优先级高于服务端下发与内置默认值，可填裸域名（自动补 `https://`）。用于 DNS/代理异常时指定可用域名。
 
 ## 命令速查
 
@@ -152,11 +153,40 @@ $PAN123 find "re:^code-.*\.tar$"       # 正则（re: 前缀，首字符不能�
 | --- | --- |
 | 命令卡在打印二维码 | Token 失效，`ensure_auth` 自动触发登录；需人工扫码 |
 | `error: authentication required` | Token 缺失/过期，执行 `pan123 login` |
-| `error: 网络异常，暂时无法验证登录状态` | 网络不可达；检查网络/代理后重试 |
+| `error: http error: error sending request for url (https://login.123pan.com/…)` | 域名连不上，**多为本地 DNS/代理劫持**（Clash 等的 fake-ip/分流规则把 `login.123pan.com`、`www.123pan.cn` 解析成黑洞 IP）。见下节"代理/DNS 环境" |
+| `error: 网络异常，暂时无法验证登录状态` | 网络不可达；检查网络/代理/DNS 后重试 |
 | `error: resource not found: <ref>` | REF 在当前目录下不存在；用 `ls`/`find` 确认名称或改用 `file_id` |
 | 上传失败 | 提高 `--retries`、降低 `--jobs`（如 `--jobs 2`）后重试 |
 | 下载中断 | 重新执行同一命令，自动从断点续传 |
 | 下载受限 | 触发流量/会员限制（`isTrafficExceeded`）；本项目不绕过该限制 |
+
+### 代理/DNS 环境（Clash 等）
+
+代理工具常劫持 DNS，把 123 盘的登录/API 域名解析到黑洞或 fake-ip 地址，表现为 `error sending request`。**先验证**：
+
+```bash
+dig +short login.123pan.com   # 应为真实 IP，而非 172.31.255.254 / 198.20.2.x
+```
+
+让代理对 123 盘域名直连（Clash / mihomo 配置）：
+
+```yaml
+dns:
+  fake-ip-filter:
+    - "+.123pan.com"
+    - "+.123pan.cn"
+rules:
+  - DOMAIN-SUFFIX,123pan.com,DIRECT
+  - DOMAIN-SUFFIX,123pan.cn,DIRECT
+```
+
+或临时用环境变量指定可用域名后重试：
+
+```bash
+export PAN123_UCENTER_URL=user.123pan.cn
+export PAN123_BASE_URL=www.123pan.cn
+pan123 login
+```
 
 ## 参考资料
 
