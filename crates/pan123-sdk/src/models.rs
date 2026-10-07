@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::fmt;
 use std::path::PathBuf;
