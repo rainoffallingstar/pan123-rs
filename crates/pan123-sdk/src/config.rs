@@ -26,9 +26,13 @@ pub fn save_token(token: &str) -> Result<()> {
     let storage = SecureStorage::auto(default_state_path(TOKEN_FILE));
     storage.save_token(token)?;
 
-    let legacy_path = default_state_path(TOKEN_FILE);
-    if legacy_path.exists() {
-        let _ = fs::remove_file(legacy_path);
+    // When the token lives in the keyring, drop any stale plaintext token file.
+    // (Never do this for the file backend: it is the file we just wrote.)
+    if !storage.is_file_backed() {
+        let legacy_path = default_state_path(TOKEN_FILE);
+        if legacy_path.exists() {
+            let _ = fs::remove_file(legacy_path);
+        }
     }
 
     Ok(())

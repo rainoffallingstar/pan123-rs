@@ -21,12 +21,39 @@ pub enum StorageBackend {
 
 impl StorageBackend {
     pub fn best_available() -> Self {
-        if keyring::Entry::new(SERVICE_NAME, TOKEN_USERNAME).is_ok() {
+        if keyring_available() {
             Self::Keyring
         } else {
             Self::EncryptedFile
         }
     }
+}
+
+/// Secret Service (the Linux keyring backend) requires a session D-Bus.
+/// In containers/WSL without one, fall back to the encrypted file backend.
+fn keyring_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+            return false;
+        }
+    }
+
+    let Ok(entry) = keyring::Entry::new(SERVICE_NAME, TOKEN_USERNAME) else {
+        return false;
+    };
+
+    if entry.get_password().is_ok() {
+        return true;
+    }
+
+    // Probe a set/delete roundtrip to detect a usable backend.
+    if entry.set_password("__pan123_probe__").is_ok() {
+        let _ = entry.delete_credential();
+        return true;
+    }
+
+    false
 }
 
 pub struct SecureStorage {
@@ -41,6 +68,14 @@ impl SecureStorage {
 
     pub fn auto(file_path: PathBuf) -> Self {
         Self::new(StorageBackend::best_available(), Some(file_path))
+    }
+
+    /// Whether the token is persisted to a file (as opposed to the keyring).
+    pub fn is_file_backed(&self) -> bool {
+        matches!(
+            self.backend,
+            StorageBackend::EncryptedFile | StorageBackend::PlaintextFile
+        )
     }
 
     pub fn save_token(&self, token: &str) -> Result<()> {
@@ -201,10 +236,34 @@ impl SecureStorage {
 
         #[cfg(target_os = "linux")]
         {
-            fs::read_to_string("/etc/machine-id")
+            // Allow an explicit override (useful for containers/WSL without
+            // /etc/machine-id).
+            if let Ok(value) = std::env::var("PAN123_MACHINE_ID") {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return Ok(trimmed.to_string());
+                }
+            }
+
+            let from_file = fs::read_to_string("/etc/machine-id")
                 .or_else(|_| fs::read_to_string("/var/lib/dbus/machine-id"))
-                .map(|s| s.trim().to_string())
-                .map_err(|e| Pan123Error::Operation(format!("failed to get machine id: {e}")))
+                .or_else(|_| fs::read_to_string("/sys/class/dmi/id/product_uuid"))
+                .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
+                .or_else(|_| fs::read_to_string("/etc/hostname"));
+
+            match from_file {
+                Ok(text) => {
+                    let trimmed = text.trim();
+                    if trimmed.is_empty() {
+                        Err(Pan123Error::Operation("machine id not found".into()))
+                    } else {
+                        Ok(trimmed.to_string())
+                    }
+                }
+                Err(e) => Err(Pan123Error::Operation(format!(
+                    "failed to get machine id: {e}"
+                ))),
+            }
         }
 
         #[cfg(target_os = "macos")]
